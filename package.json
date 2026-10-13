@@ -1,0 +1,62 @@
+{
+  "name": "workflow-sentinel",
+  "version": "0.0.0",
+  "description": "Harden GitHub Actions: flags unpinned actions, broad or missing permissions, pull_request_target pwn requests, script injection, leaked secrets, persisted credentials, self-hosted PR runners, curl|bash, deprecated commands and undigested images, with a fix for each. --fix pins SHAs. Text, JSON, SARIF, Markdown; GitHub Action included.",
+  "type": "module",
+  "main": "./src/index.js",
+  "types": "./src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "workflow-sentinel": "bin/workflow-sentinel.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "action.yml",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "yaml": "2.9.1"
+  },
+  "keywords": [
+    "github-actions",
+    "security",
+    "workflow",
+    "ci",
+    "supply-chain-security",
+    "pinning",
+    "sha-pinning",
+    "pull-request-target",
+    "script-injection",
+    "sarif",
+    "cli",
+    "github-action",
+    "devsecops",
+    "linter",
+    "hardening"
+  ],
+  "author": "Louis Wright <hello@louiswright.co.uk> (https://github.com/MrLouisWright)",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MrLouisWright/workflow-sentinel.git"
+  },
+  "bugs": {
+    "url": "https://github.com/MrLouisWright/workflow-sentinel/issues"
+  },
+  "homepage": "https://github.com/MrLouisWright/workflow-sentinel#readme"
+}

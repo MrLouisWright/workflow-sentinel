@@ -1,0 +1,52 @@
+name: 'workflow-sentinel'
+description: 'Fail CI on insecure GitHub Actions workflows: unpinned actions, broad permissions, pwn requests, script injection and more'
+author: 'Louis Wright'
+branding: { icon: 'shield', color: 'green' }
+inputs:
+  paths: { description: 'Space-separated files/directories to scan (default: repository root)', default: '' }
+  fail-on: { description: 'critical | high | medium | low | info | none', default: 'high' }
+  config: { description: 'Path to JSON config file', default: '' }
+  trusted-owners: { description: 'Space-separated owners or owner/repo that may use tags instead of SHAs, e.g. "actions github"', default: '' }
+  sarif: { description: 'Write SARIF to this path (upload with github/codeql-action/upload-sarif)', default: '' }
+  json: { description: 'Write JSON report to this path', default: '' }
+  job-summary: { description: 'Write the Markdown report to the job summary (true/false)', default: 'true' }
+  args: { description: 'Extra CLI arguments', default: '' }
+outputs:
+  markdown-file: { description: 'Path of the Markdown report', value: '${{ steps.run.outputs.markdown-file }}' }
+runs:
+  using: 'composite'
+  steps:
+    - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+      with: { node-version: '20' }
+    - name: Install workflow-sentinel dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --omit=dev --ignore-scripts --no-audit --no-fund --loglevel=error
+    - id: run
+      shell: bash
+      env:
+        WS_PATHS: ${{ inputs.paths }}
+        WS_FAIL_ON: ${{ inputs.fail-on }}
+        WS_CONFIG: ${{ inputs.config }}
+        WS_TRUSTED: ${{ inputs.trusted-owners }}
+        WS_SARIF: ${{ inputs.sarif }}
+        WS_JSON: ${{ inputs.json }}
+        WS_SUMMARY: ${{ inputs.job-summary }}
+        WS_ARGS: ${{ inputs.args }}
+        WS_BIN: ${{ github.action_path }}/bin/workflow-sentinel.js
+        FORCE_COLOR: '1'
+      run: |
+        md="$RUNNER_TEMP/workflow-sentinel.md"
+        args=(--fail-on "$WS_FAIL_ON" --markdown "$md")
+        [ -n "$WS_CONFIG" ] && args+=(--config "$WS_CONFIG")
+        for o in $WS_TRUSTED; do args+=(--trusted-owner "$o"); done
+        [ -n "$WS_SARIF" ] && args+=(--sarif "$WS_SARIF")
+        [ -n "$WS_JSON" ] && args+=(--json "$WS_JSON")
+        set +e
+        # shellcheck disable=SC2086
+        node "$WS_BIN" $WS_PATHS "${args[@]}" $WS_ARGS
+        code=$?
+        set -e
+        echo "markdown-file=$md" >> "$GITHUB_OUTPUT"
+        if [ "$WS_SUMMARY" = "true" ] && [ -f "$md" ]; then cat "$md" >> "$GITHUB_STEP_SUMMARY"; fi
+        exit $code
