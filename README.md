@@ -140,6 +140,10 @@ Tests live in [`test/`](test/) and run on every push in [`.github/workflows/ci.y
 
 This is a static, pattern-based linter. It doesn't follow data across jobs or into the scripts your workflows call, and it can't know which of your self-hosted runners are ephemeral. Treat a clean result as a good baseline, not a guarantee.
 
+## Support
+
+If this project is useful to you, you can support its development with a donation: [Buy me a coffee](https://donate.stripe.com/aFa00lek3cvX4Ds2Fk9EI0b). It helps keep these tools maintained, documented and free for everyone.
+
 ## License
 
-MIT © Louis Wright
+MIT © Louis Wright ([Louis Wright](https://github.com/MrLouisWright))
