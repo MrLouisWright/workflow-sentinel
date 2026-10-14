@@ -2,6 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseDocument, LineCounter, isMap, isSeq, isScalar } from 'yaml';
 import { RULES, UNTRUSTED } from './rules.js';
+import { extractExpressions, validateExpression, taintFromEnvBlock } from './expressions.js';
+import { validateWorkflowSchema, validateActionInputs } from './schema.js';
+import { checkCachePoisoning, checkArtipacked, UPLOAD_ARTIFACT, DOWNLOAD_ARTIFACT, CHECKOUT, CACHE_ACTIONS } from './taint.js';
 
 const SHA_RE = /^[0-9a-f]{40}$/;
 const EXPR_RE = /\$\{\{([\s\S]*?)\}\}/g;
@@ -56,7 +59,10 @@ export function scanText(text, file, opts = {}) {
       if (s.startsWith('docker://') && !/@sha256:[0-9a-f]{64}/.test(s)) add('docker-no-digest', img, `Action image ${s} is not pinned to a digest`, { target: s });
     }
     const steps = val(runs, 'steps');
-    if (isSeq(steps)) for (const st of steps.items) checkStep(st, { triggers: [], composite: true, job: null });
+    if (isSeq(steps)) {
+      const compositeCtx = { triggers: [], composite: true, job: null, taintedEnv: new Set(), arti: null };
+      for (const st of steps.items) checkStep(st, compositeCtx);
+    }
     return findings;
   }
 
@@ -66,6 +72,10 @@ export function scanText(text, file, opts = {}) {
   const triggers = typeof onJs === 'string' ? [onJs] : Array.isArray(onJs) ? onJs : onJs && typeof onJs === 'object' ? Object.keys(onJs) : [];
   const privileged = triggers.filter((t) => t === 'pull_request_target' || t === 'workflow_run');
   const prTriggered = triggers.some((t) => PR_TRIGGERS.includes(t));
+
+  for (const si of validateWorkflowSchema(root)) add('invalid-schema', root, si.message);
+  scanExpressionsInNode(val(root, 'env'), 'Workflow env', triggers);
+  scanExpressionsInNode(val(root, 'run-name'), 'run-name', triggers);
 
   // ---- permissions ----
   const topPerm = get(root, 'permissions');
@@ -94,7 +104,11 @@ export function scanText(text, file, opts = {}) {
   if (isMap(jobs)) for (const jp of jobs.items) {
     const job = jp.value;
     const name = String(jp.key.value);
-    const ctx = { triggers, privileged, job: name, untrustedCheckout: false };
+    const taintedEnv = taintFromEnvBlock(js(val(job, 'env')), UNTRUSTED);
+    const arti = { checkoutPersisted: null, hasUploadArtifact: false, hasDownloadArtifact: false, uploadPaths: [], privileged, untrustedCheckout: false };
+    const ctx = { triggers, privileged, job: name, untrustedCheckout: false, taintedEnv, arti };
+
+    scanExpressionsInNode(val(job, 'env'), `Job "${name}" env`, triggers);
 
     const runsOn = js(val(job, 'runs-on'));
     const labels = typeof runsOn === 'string' ? [runsOn] : Array.isArray(runsOn) ? runsOn : runsOn?.labels ? [].concat(runsOn.labels) : [];
@@ -123,6 +137,8 @@ export function scanText(text, file, opts = {}) {
       // first pass: does this job check out untrusted code?
       for (const st of steps.items) if (privileged.length && untrustedCheckout(st)) ctx.untrustedCheckout = true;
       for (const st of steps.items) checkStep(st, ctx);
+      arti.untrustedCheckout = ctx.untrustedCheckout;
+      for (const af of checkArtipacked(arti)) add('artipacked', steps.items[0], af.message);
       if (ctx.untrustedCheckout) {
         const secretRefs = [];
         for (const st of steps.items) { const t = js(st); if (/\$\{\{\s*secrets\.(?!GITHUB_TOKEN\b)/.test(JSON.stringify(t))) secretRefs.push(st); }
@@ -163,13 +179,52 @@ export function scanText(text, file, opts = {}) {
     if (!/@sha256:[0-9a-f]{64}/.test(s)) add('docker-no-digest', node, `${where} image ${s.replace(/^docker:\/\//, '')} is not pinned to a digest`, { target: s });
   }
 
+  function scanExpressionsInNode(node, where, trigs) {
+    if (!node) return;
+    const text = String(js(node) ?? '');
+    const base = lineAt(node);
+    for (const { expr, index } of extractExpressions(text)) {
+      for (const iss of validateExpression(expr, { triggers: trigs })) {
+        const line = base + text.slice(0, index).split('\n').length - 1;
+        add('invalid-expression', line, `${where}: ${iss.message} (\`${expr.slice(0, 60)}\`)`);
+      }
+    }
+  }
+
+  function mergeTaintFromStepEnv(st, ctx) {
+    const envNode = val(st, 'env');
+    if (!envNode || !ctx.taintedEnv) return;
+    for (const n of taintFromEnvBlock(js(envNode), UNTRUSTED)) ctx.taintedEnv.add(n);
+    scanExpressionsInNode(envNode, ctx.job ? `Job "${ctx.job}" step env` : 'Step env', ctx.triggers);
+  }
+
   function checkStep(st, ctx) {
     if (!isMap(st)) return;
+    mergeTaintFromStepEnv(st, ctx);
     const usesNode = val(st, 'uses');
     const u = String(js(usesNode) || '');
-    if (usesNode) checkUses(usesNode, ctx);
-    if (/^actions\/checkout@/i.test(u)) {
+    const withNode = val(st, 'with');
+    const withJs = js(withNode) || {};
+    if (usesNode) {
+      checkUses(usesNode, ctx);
+      for (const ai of validateActionInputs(u, withNode)) add('invalid-schema', withNode || usesNode, ai.message);
+    }
+    if (withNode) scanExpressionsInNode(withNode, ctx.job ? `Job "${ctx.job}" with` : 'Step with', ctx.triggers);
+    if (ctx.taintedEnv && CACHE_ACTIONS.test(u)) {
+      for (const hit of checkCachePoisoning(u, withJs, ctx.taintedEnv, UNTRUSTED))
+        add('cache-poisoning', val(withNode, hit.field === 'key' ? 'key' : hit.field.startsWith('restore') ? 'restore-keys' : 'path') || withNode || usesNode,
+          `Cache ${hit.field} includes untrusted input${ctx.job ? ` (job "${ctx.job}")` : ''}: ${hit.value}`);
+    }
+    if (ctx.arti && UPLOAD_ARTIFACT.test(u)) {
+      ctx.arti.hasUploadArtifact = true;
+      const paths = withJs.path;
+      if (paths != null) ctx.arti.uploadPaths.push(...(Array.isArray(paths) ? paths : [paths]).map(String));
+    }
+    if (ctx.arti && DOWNLOAD_ARTIFACT.test(u)) ctx.arti.hasDownloadArtifact = true;
+    if (CHECKOUT.test(u)) {
       const w = js(val(st, 'with')) || {};
+      const persisted = !(w['persist-credentials'] === false || w['persist-credentials'] === 'false');
+      if (ctx.arti && persisted) ctx.arti.checkoutPersisted = true;
       if (!(w['persist-credentials'] === false || w['persist-credentials'] === 'false'))
         add('persist-credentials', usesNode, `${u} without \`persist-credentials: false\`${ctx.job ? ` in job "${ctx.job}"` : ''}`, { fix: 'Add to the step: `with: { persist-credentials: false }` (keep it only if a later step must `git push`).' });
       if (ctx.privileged?.length && untrustedCheckout(st))
@@ -189,6 +244,9 @@ export function scanText(text, file, opts = {}) {
       const lineOf = (idx) => base + offset + text.slice(0, idx).split('\n').length - 1;
       for (const m of text.matchAll(EXPR_RE)) {
         const expr = m[1].trim();
+        for (const iss of validateExpression(expr, { triggers: ctx.triggers })) {
+          add('invalid-expression', lineOf(m.index), `${iss.message} in ${kind === 'run' ? 'run:' : 'github-script'}${ctx.job ? ` (job "${ctx.job}")` : ''} (\`${expr.slice(0, 60)}\`)`);
+        }
         const bad = UNTRUSTED.find((re) => re.test(expr));
         const isInput = ctx.composite && /\binputs\./.test(expr);
         const envName = expr.replace(/^.*\./, '').replace(/[^A-Za-z0-9]+/g, '_').toUpperCase() || 'VALUE';

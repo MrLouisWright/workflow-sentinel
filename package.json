@@ -1,13 +1,15 @@
 {
   "name": "workflow-sentinel",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Harden GitHub Actions: flags unpinned actions, broad or missing permissions, pull_request_target pwn requests, script injection, leaked secrets, persisted credentials, self-hosted PR runners, curl|bash, deprecated commands and undigested images, with a fix for each. --fix pins SHAs. Text, JSON, SARIF, Markdown; GitHub Action included.",
   "type": "module",
-  "main": "./src/index.js",
-  "types": "./src/index.d.ts",
+  "main": "./dist/index.cjs",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.d.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./src/index.js",
+      "require": "./dist/index.cjs",
       "default": "./src/index.js"
     },
     "./package.json": "./package.json"
@@ -17,6 +19,7 @@
   },
   "files": [
     "src",
+    "dist",
     "bin",
     "action.yml",
     "README.md",
@@ -27,7 +30,13 @@
     "node": ">=18"
   },
   "scripts": {
-    "test": "node --test test/*.test.js"
+    "build": "node scripts/build.mjs",
+    "prepack": "npm run build",
+    "test": "npm run build && node --test test/*.test.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "typescript": "5.9.3"
   },
   "dependencies": {
     "yaml": "2.9.1"

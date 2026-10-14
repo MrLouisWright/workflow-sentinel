@@ -1,5 +1,10 @@
 # workflow-sentinel
 
+[![npm version](https://img.shields.io/npm/v/workflow-sentinel)](https://www.npmjs.com/package/workflow-sentinel)
+[![CI](https://github.com/MrLouisWright/workflow-sentinel/actions/workflows/ci.yml/badge.svg)](https://github.com/MrLouisWright/workflow-sentinel/actions/workflows/ci.yml)
+[![Node](https://img.shields.io/node/v/workflow-sentinel)](https://www.npmjs.com/package/workflow-sentinel)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 > Catch insecure GitHub Actions workflows before they're merged.
 
 `workflow-sentinel` reads your `.github/workflows/*.yml` and `action.yml` files and flags the patterns behind most real-world Actions compromises: mutable action tags, over-privileged tokens, `pull_request_target` "pwn requests", script injection, leaked secrets and more. Every finding includes a file and line number, a severity and a **concrete fix**. `--fix` pins your actions to commit SHAs for you.
@@ -22,6 +27,10 @@ CLI, library and GitHub Action. Node.js 18+, one small runtime dependency (`yaml
 | `curl-pipe-shell` | medium | `curl … \| bash`, `wget -O- … \| sh`, `bash <(curl …)`, `sh -c "$(curl …)"` |
 | `deprecated-command` | medium (high for `set-env`/`add-path`) | `::set-output`, `::save-state`, `::set-env`, `::add-path` |
 | `docker-no-digest` | medium | `docker://` actions, `container:`, `services:` and Docker `action.yml` images without `@sha256:` |
+| `cache-poisoning` | high | Untrusted `github.event.*` / branch names in `actions/cache` keys or paths (including via tainted `env`) |
+| `artipacked` | medium | `upload-artifact` after checkout without `persist-credentials: false`, broad artifact paths, risky `download-artifact` in privileged workflows |
+| `invalid-expression` | medium | Mistyped `${{ }}` contexts (`github.events`), properties unavailable for your `on:` triggers, unknown functions |
+| `invalid-schema` | low | Unknown workflow/job/step keys (e.g. `job:` instead of `jobs:`), likely typos in action inputs |
 
 ## Install and run
 
@@ -29,7 +38,7 @@ CLI, library and GitHub Action. Node.js 18+, one small runtime dependency (`yaml
 npx workflow-sentinel                      # scan the current repository
 npx workflow-sentinel .github/workflows/release.yml --fail-on medium
 npx workflow-sentinel --trusted-owner actions --trusted-owner github
-GH_TOKEN=... npx workflow-sentinel --fix   # pin every action to its current commit SHA
+GH_TOKEN=... npx workflow-sentinel --fix   # pin every action to its current commit SHA (# v4 comment for Dependabot)
 ```
 
 ### Sample output
@@ -57,7 +66,7 @@ workflow-sentinel — 3 file(s) scanned
 | `--fail-on <sev>` | `critical`, `high` (default), `medium`, `low`, `info` or `none` |
 | `--config <file>` | Config file path |
 | `--trusted-owner <o>` | Allow tags for an owner (`actions`) or a repo (`github/codeql-action`). Repeatable |
-| `--fix` / `--fix-dry-run` | Resolve each tag or branch to its commit SHA through the GitHub API (`GH_TOKEN` or `GITHUB_TOKEN`) and rewrite `uses:` as `owner/repo@<sha> # v4` |
+| `--fix` / `--fix-dry-run` | Resolve each tag or branch to its commit SHA through the GitHub API (`GH_TOKEN` or `GITHUB_TOKEN`) and rewrite `uses:` as `owner/repo@<sha> # v4` (Dependabot-compatible SHA comments) |
 | `--json [file]`, `--sarif <file>`, `--markdown <file>` | Reports |
 | `--no-fixes`, `--no-color` | Text output tweaks |
 
@@ -114,12 +123,18 @@ Inputs: `paths`, `fail-on`, `config`, `trusted-owners` (space-separated), `sarif
 
 ## Library
 
+ESM and CommonJS (`require`) are both supported. TypeScript declarations are generated from source at build time.
+
 ```js
 import { scan, scanText, formatSarif } from 'workflow-sentinel';
 const { findings } = scan({ cwd: '.', config: { trustedOwners: ['actions'] } });
 ```
 
-TypeScript types are included.
+```js
+const { scanText, validateExpression } = require('workflow-sentinel');
+```
+
+Tests live in [`test/`](test/) and run on every push in [`.github/workflows/ci.yml`](.github/workflows/ci.yml) (including import + `require` checks). Releases publish to npm with [`--provenance`](.github/workflows/release.yml).
 
 ## Limitations
 

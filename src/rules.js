@@ -28,6 +28,14 @@ export const RULES = {
   'docker-no-digest': { severity: 'medium', title: 'Docker image without a digest',
     help: 'Image tags are mutable. Pin to a digest: `image@sha256:<digest>` (get it with `docker buildx imagetools inspect <image>`).' },
   'parse-error': { severity: 'high', title: 'Workflow could not be parsed', help: 'Fix the YAML syntax.' },
+  'cache-poisoning': { severity: 'high', title: 'Untrusted input in cache key or path',
+    help: 'Cache keys must not include PR titles, branch names, or other attacker-controlled values (directly or via env). Use a fixed prefix plus `github.sha` or `github.run_id`, or restrict cache restore to trusted branches only.' },
+  'artipacked': { severity: 'medium', title: 'Artifact step may package credentials or untrusted output',
+    help: 'Set `persist-credentials: false` on actions/checkout before upload-artifact, use narrow `path:` values, and do not download artifacts from untrusted PR workflows into privileged jobs.' },
+  'invalid-expression': { severity: 'medium', title: 'Invalid or mistyped workflow expression',
+    help: 'Fix the `${{ }}` expression: use valid contexts (`github`, `env`, `matrix`, …), match `github.event.*` to your workflow triggers, and fix typos (e.g. `github.events` → `github.event`).' },
+  'invalid-schema': { severity: 'low', title: 'Unknown workflow YAML key',
+    help: 'Remove or rename the key to match the GitHub Actions workflow schema (see https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions).' },
 };
 
 // Expressions an attacker can control (fork PRs, issues, comments, branch names, commit messages...).

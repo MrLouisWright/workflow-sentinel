@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+// Matches step and reusable-workflow `uses:` lines. Keeps/refreshes `# vX.Y.Z` for Dependabot SHA pinning.
 const USES_RE = /^(\s*-?\s*uses:\s*)(["']?)([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\/[^@\s"']+)?)@([^\s"'#]+)\2([ \t]*#.*)?$/;
 
 export async function resolveSha(action, ref, { token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN, fetchImpl = globalThis.fetch, api = 'https://api.github.com' } = {}) {
@@ -27,7 +28,8 @@ export async function pinText(text, resolve) {
     let sha;
     try { sha = await resolve(action, ref); } catch (e) { changes.push({ line: i + 1, action, ref, error: e.message }); continue; }
     const cr = lines[i].endsWith('\r') ? '\r' : '';
-    lines[i] = `${pre}${q}${action}@${sha}${q}${comment ? comment : ` # ${ref}`}${cr}`;
+    const tagComment = comment?.trim() || `# ${ref}`;
+    lines[i] = `${pre}${q}${action}@${sha}${q}${tagComment.startsWith('#') ? ` ${tagComment}` : ` # ${tagComment}`}${cr}`;
     changes.push({ line: i + 1, action, ref, sha });
   }
   return { text: lines.join('\n'), changes };
