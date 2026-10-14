@@ -2,6 +2,15 @@
 
 All notable changes to this project are documented here. The format follows [Keep a Changelog](https://keepachangelog.com/) and the project uses [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-10-14
+
+### Added
+- **Taint-style checks** aligned with zizmor: `cache-poisoning` (untrusted cache keys/paths, including via tainted `env`), `artipacked` (risky artifact upload/download with checkout credentials).
+- **actionlint-style validation**: `invalid-expression` (typos, wrong contexts, trigger mismatches) and `invalid-schema` (unknown workflow keys and action input typos).
+- Dual **ESM + CJS** exports (`import` / `require`), with **TypeScript declarations generated** from `src/` at build time.
+- CI verifies **ESM import and CJS require**; release workflow publishes with **npm provenance** (unchanged, documented in README).
+- README **badges** and docs for tests, Dependabot-friendly `--fix` SHA comments.
+
 ## [1.0.0] - 2026-10-13
 
 ### Added

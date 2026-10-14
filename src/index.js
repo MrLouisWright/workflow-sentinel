@@ -6,6 +6,8 @@ import { sevRank } from './rules.js';
 
 export { scanText, findFiles } from './scan.js';
 export { RULES, SEVERITIES, UNTRUSTED } from './rules.js';
+export { validateExpression, extractExpressions } from './expressions.js';
+export { validateWorkflowSchema } from './schema.js';
 export { loadConfig, isAllowed } from './config.js';
 export { formatText, formatJson, formatSarif, formatMarkdown, exitCode } from './format.js';
 export { fixFiles, resolveSha, pinText } from './fix.js';
