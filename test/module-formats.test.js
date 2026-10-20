@@ -3,8 +3,9 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const root = path.resolve(import.meta.dirname, '..');
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 test('ESM import from package entry', async () => {
   const mod = await import(path.join(root, 'src/index.js'));
