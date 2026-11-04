@@ -123,6 +123,12 @@ Inputs: `paths`, `fail-on`, `config`, `trusted-owners` (space-separated), `sarif
 
 ## Library
 
+Install it in your project first:
+
+```bash
+npm install --save-dev workflow-sentinel
+```
+
 ESM and CommonJS (`require`) are both supported. TypeScript declarations are generated from source at build time.
 
 ```js
